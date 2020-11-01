@@ -46,6 +46,8 @@ export async function prepareRom(world_patch, settings, baseIps, game) {
 
     applySeed(rom, world_patch);
 
+    fixupChecksum(rom, mapping);
+    
     return rom;
 }
 
@@ -196,4 +198,36 @@ function applySeed(rom, patch) {
         rom.set(patch.slice(offset, offset + length), dest);
         offset += length;
     }
+}
+
+function applyChecksum(rom, mapping, sum) {
+  var offset = snes_to_pc(mapping, 0xFFDC);
+  var inv = ~sum;
+  rom[offset + 0] = 0xFF & inv;
+  rom[offset + 1] = 0xFF & (inv >> 8);
+  rom[offset + 2] = 0xFF & sum;
+  rom[offset + 3] = 0xFF & (sum >> 8);
+}
+
+function fixupChecksum(rom, mapping) {
+  //Refer to https://sneslab.net/wiki/SNES_ROM_Header for more information.
+  var firstChunkSize, tmp = 1;
+  while(rom.length >= tmp) {
+    firstChunkSize = tmp;
+    tmp <<= 1;
+  }
+  
+  applyChecksum(rom, mapping, 0); //ensures sane sum/inv before counting
+  var sum = 0, i = 0;
+  while(i < firstChunkSize) { sum  += rom[i++]; }
+  
+  var mirroredChunkSize = rom.length - firstChunkSize;
+  if(mirroredChunkSize != 0) {
+    var mirroredChunkMul = firstChunkSize / mirroredChunkSize;
+    var mSum = 0;
+    while(i < rom.length) { mSum += rom[i++]; }
+    sum += mSum * mirroredChunkMul;
+  }
+
+  applyChecksum(rom, mapping, sum);
 }
